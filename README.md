@@ -1,4 +1,7 @@
 # Linux_system_programming
+
+
+
 Learning linux system programming notes
 
 Mention:
@@ -7,7 +10,9 @@ Mention:
 >
 >In Linux, Everything is a File.
 
-## 1. 系统目录
+[TOC]
+
+## 系统目录
 
 一些文件的内容回顾：
 
@@ -27,7 +32,7 @@ root：管理员宿主目录
 
 usr：用户资源管理目录
 
-## 2. 文件和目录操作
+## 文件和目录操作
 
 ```bash
 cd - # 返回上一个目录
@@ -35,7 +40,7 @@ cd .. #
 cd ~
 ```
 
-## 3. 软链接和硬链接
+## 软链接和硬链接
 
 ### 软链接
 
@@ -76,7 +81,7 @@ stat file.hard
 
 删除具有硬链接的文件：一次只能删一个文件，并将硬链接计数减一。
 
-## 4. find命令
+## find命令
 
 ```bash
 # -type 按照文件类型搜索：链接文件（七种文件类型）
@@ -138,9 +143,9 @@ find ./ -maxdepth 1 -type f -print0 | -print0 ls -l
 
 [Stack overflow解释](https://stackoverflow.com/questions/896808/find-exec-cmd-vs-xargs)
 
-## 5. grep命令
+## grep命令
 
-## 6. ps命令
+## ps命令
 
 常用命令：
 
@@ -148,3 +153,52 @@ find ./ -maxdepth 1 -type f -print0 | -print0 ls -l
 
 如果`ps aux | grep` 命令只返回一条，那么系统中就没有当前该进程。
 
+## 压缩和解压
+
+```shell
+tar zcvf test.tar.gz file1 file2 dir
+z: gzip方式进行压缩
+c: create
+f: file
+v: 显示压缩过程
+j: bzip2方式进行压缩
+
+# 解压，将c替换成x
+tar zxvf test.tar.gz
+```
+
+真正用来压缩的是`gzip`，`tar`命令是用来打包的，但是`gzip`无法同时压好几个文件。
+
+## 系统编程
+
+C 标准函数和系统函数调用关系。一个 helloworld 如何打印到屏幕。 
+
+![Screen Shot 2021-11-18 at 20.28.30](/Users/fszhuangb/Library/Application Support/typora-user-images/Screen Shot 2021-11-18 at 20.28.30.png)
+
+## 文件IO
+
+函数原型：
+
+```shell
+int open(const char *pathname, int flags);
+int open(const char *pathname, int flags, mode_t mode); 
+int close(int fd);
+```
+
+常用参数:
+
+O_RDONLY、O_WRONLY、O_RDWR O_APPEND、O_CREAT、O_EXCL、 O_TRUNC、 O_NONBLOCK
+
+创建文件时，指定文件访问权限。权限同时受 umask 影响。结论为:
+
+文件权限 = mode & ~umask 
+
+使用头文件:<fcntl.h>
+
+O_TRUNC参数：截断为0，将文件清空。
+
+open 常见错误 :
+
+1. 打开文件不存在
+2. 以写方式打开只读文件(打开文件没有对应权限) 
+3. 以只写方式打开目录
