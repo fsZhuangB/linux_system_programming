@@ -100,5 +100,51 @@ find ./ -size +20M -size -50M
 find /usr/ -name "*tmp*" -exec ls -l {} \;
 ```
 
-注意，`-exec`不会询问`rm -rf`操作，可以将其换成`-ok`
+注意： 
+
+1. `-exec`不会询问`rm -rf`操作，可以将其换成`-ok`
+
+2. 对于`find`命令，无法直接使用管道操作，如：
+
+   ```bash
+   find /usr/ -name "*tmp*" | ls -l # 错误的！
+   
+   ## 可以这样：增加一个xargs 
+   find /usr/ -name "*tmp*" | xargs ls -l
+   ```
+
+xargs和exec的区别在于性能上，当结果集数量过大时，可以分片映射，故xargs更好一些，具体注意点：
+
+```shell
+# 对于文件名中有空格的，xargs会有问题
+touch "abc xyz"
+# 显示没问题
+find ./ -maxdepth 1 -type f -exec ls -l {} \;
+-rw-r--r--  1 fszhuangb  staff  0 Nov 17 22:26 .//abc xyz
+-rw-r--r--  1 fszhuangb  staff  0 Nov 17 22:26 .//abc
+-rw-r--r--  1 fszhuangb  staff  0 Nov 17 22:26 .//xyz
+# xargs：将abc拆开了
+find ./ -maxdepth 1 -type f | ls -l
+-rw-r--r--  1 fszhuangb  staff  0 Nov 17 22:26 .//abc
+-rw-r--r--  1 fszhuangb  staff  0 Nov 17 22:26 .//abc
+-rw-r--r--  1 fszhuangb  staff  0 Nov 17 22:26 .//xyz
+-rw-r--r--  1 fszhuangb  staff  0 Nov 17 22:26 xyz
+
+# 更改：-print0指用null来做拆分依据
+find ./ -maxdepth 1 -type f -print0 | -print0 ls -l
+```
+
+
+
+[Stack overflow解释](https://stackoverflow.com/questions/896808/find-exec-cmd-vs-xargs)
+
+## 5. grep命令
+
+## 6. ps命令
+
+常用命令：
+
+`ps aux | grep` ，检索进程结果集。
+
+如果`ps aux | grep` 命令只返回一条，那么系统中就没有当前该进程。
 
