@@ -53,7 +53,7 @@ ln -s file file.s # 为file创建其软链接file.s，相当于windows的快捷�
 
 1. 注意4个字节的内容是什么：（指访问路径）
 
-   ![](/Users/fszhuangb/Desktop/Screen Shot 2021-11-17 at 20.04.05.png)
+   ![](https://github.com/fsZhuangB/Photos_Of_Blog/blob/master/photos/Screen%20Shot%202021-11-24%20at%2020.00.17.png?raw=true)
 
 2. 为了保证软链接可以任意搬移，注意要用绝对路径创建软链接，相对路径会出问题
 3. 软链接的权限是全开放的，rwx全部可以，任意一个人都可以读写软链接，但是是否可以进行读写修改还是要看链接文件的权限。
@@ -80,6 +80,10 @@ stat file.hard
 读写修改：系统理解为读取相同Inode的文件。
 
 删除具有硬链接的文件：一次只能删一个文件，并将硬链接计数减一。
+
+## 创建修改用户和用户组
+
+
 
 ## find命令
 
@@ -169,13 +173,23 @@ tar zxvf test.tar.gz
 
 真正用来压缩的是`gzip`，`tar`命令是用来打包的，但是`gzip`无法同时压好几个文件。
 
+## Vim使用
+
+### Vim三种工作模式
+
+![Screen Shot 2021-11-20 at 20.18.06](https://github.com/fsZhuangB/Photos_Of_Blog/blob/master/photos/Screen%20Shot%202021-11-24%20at%2020.01.57.png?raw=true)
+
+
+
 ## 系统编程
 
 C 标准函数和系统函数调用关系。一个 helloworld 如何打印到屏幕。 
 
-![Screen Shot 2021-11-18 at 20.28.30](/Users/fszhuangb/Library/Application Support/typora-user-images/Screen Shot 2021-11-18 at 20.28.30.png)
+![Screen Shot 2021-11-18 at 20.28.30](https://github.com/fsZhuangB/Photos_Of_Blog/blob/master/photos/Screen%20Shot%202021-11-24%20at%2020.04.19.png?raw=true)
 
 ## 文件IO
+
+### open() and close()
 
 函数原型：
 
@@ -202,3 +216,130 @@ open 常见错误 :
 1. 打开文件不存在
 2. 以写方式打开只读文件(打开文件没有对应权限) 
 3. 以只写方式打开目录
+
+### read() and write()
+
+函数原型：
+
+```c
+ssize_t read(int fd, void *buf, size_t count);
+
+ssize_t write(int fd, const void *buf, size_t count);
+```
+
+对于read函数：
+
+参数: 
+
+- fd:文件描述符
+- buf:存数据的缓冲区
+- count:缓冲区大小 
+
+返回值：
+
+- 0:读到文件末尾。
+- 成功; > 0 读到的字节数。
+- 失败: -1， 设置 errno
+- -1: 并且 errno = EAGIN 或 EWOULDBLOCK, 说明不是 read 失败，而是 read 在以非阻塞方 式读一个设备文件(网络文件)，并且文件无数据。
+
+对于write函数：
+
+参数: 
+
+- fd:文件描述符
+- buf:待写出数据的缓冲区
+- count:数据大小
+
+返回值：
+
+- 成功：写入的字节数。
+- 失败： -1， 设置 errno。
+
+read 与 write 函数原型类似。使用时需注意:read/write 函数的第三个参数，一个指读取的最大容量，一个指写入的容量。
+
+read() and write()又被称为无buffer IO
+
+### 实现copy
+
+```c
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
+#include <sys/stat.h>
+#include <fcntl.h>
+
+#define MAX_READ 1024
+int main(int argc, char* argv[])
+{
+    char buffer[MAX_READ + 1];
+    ssize_t numRead;
+
+    // get the file name
+    char* file1 = *(argv+1); // 或者直接 char* file1 = argv[1];
+    char* file2 = *(argv+2);
+    int fd1 = open(file1, O_RDWR);
+    // O_TRUNC：如果文件已经存在，截断为0
+    // O_CREAT后，要记得指定一下权限
+    int fd2 = open(file2, O_RDWR | O_CREAT | O_TRUNC, 0644);
+
+    if (fd1 == -1 || fd2 == -1)
+    {
+        perror("open error");
+        exit(1);
+    }
+
+    while ((numRead = read(fd1, buffer, MAX_READ)) != 0)
+    {
+        if (numRead == -1)
+        {
+            perror("read error");
+            exit(1);
+        }
+        write(fd2, buffer, numRead);
+    }
+
+    close(fd1);
+    close(fd2);
+
+    return 0;
+}
+```
+
+用 read/write 实现的 copy 和 fgetc/fputc 实现的 copy 对比:
+
+提出问题：对于write()系统调用和标准库函数`fgetc/fputc`来说，fgetc/fputc调用了系统函数，可能会更慢一点？
+
+![](https://github.com/fsZhuangB/Photos_Of_Blog/blob/master/photos/Screen%20Shot%202021-11-22%20at%2019.54.48.png?raw=true)
+
+**事实上，fget相对系统调用要快。**
+
+原因分析:
+ read/write 这块，每次写一个字节，会疯狂进行内核态和用户态的切换，所以非常耗时。 fgetc/fputc，有个自带的缓冲区，大小为4096字节，所以它并不是一个字节一个字节地写，而是内核和用户切换就比较少。
+
+这个被称为**预读入，缓输出机制。** 所以系统函数并不是一定比库函数牛逼，能使用库函数的地方就使用库函数。
+
+标准 IO 函数自带用户缓冲区，系统调用无用户级缓冲。系统缓冲区是都有的。
+
+## 文件描述符
+
+这是一个结构体 PCB 的成员变量 ：file_struct *file 指向的文件描述符表。是一个指向文件描述符的指针，遵循着打开文件描述符表中可用的最小的文件描述符的原则，比如打开一个文件，fd=3，关闭后再打开还是fd =3。
+
+从应用程序使用角度，该指针可理解记忆成一个字符指针数组，下标 0/1/2/3/4...找到文件 结构体。
+
+标准文件描述符：
+
+```c
+STDIN_FILENO  0 
+STDOUT_FILENO 1 
+STDERR_FILENO 2
+```
+
+**最大打开文件数目：**
+
+一个进程默认打开文件的个数 1024，命令查看 ulimit -a 查看 open files 对应值。默认为 1024
+
+PCB进程控制块，本质是一个结构体：
+
+![Screen Shot 2021-11-22 at 19.32.33](https://github.com/fsZhuangB/Photos_Of_Blog/blob/master/photos/Screen%20Shot%202021-11-24%20at%2020.05.26.png?raw=true)
+
