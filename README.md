@@ -343,3 +343,61 @@ PCB进程控制块，本质是一个结构体：
 
 ![Screen Shot 2021-11-22 at 19.32.33](https://github.com/fsZhuangB/Photos_Of_Blog/blob/master/photos/Screen%20Shot%202021-11-24%20at%2020.05.26.png?raw=true)
 
+## 阻塞与非阻塞
+
+读**常规文件**是不会阻塞的，不管读多少字节，read 一定会在有限的时间内返回。从终 端设备或网络读则不一定，如果从终端输入的数据没有换行符，调用 read 读终端设备就会 阻塞，如果网络上没有接收到数据包，调用 read 从网络读就会阻塞，至于会阻塞多长时间 也是不确定的，如果一直没有数据到达就一直阻塞在那里。同样，写常规文件是不会阻塞的， 而向终端设备或网络写则不一定。
+
+下面的代码演示了读取标准输入的操作：
+
+![](https://github.com/fsZhuangB/Photos_Of_Blog/blob/master/photos/Screen%20Shot%202021-11-24%20at%2020.14.33.png?raw=true)
+
+
+
+在文件属性中，有一个重要属性，为`O_NONBLOCK`，可以读取终端文件`/dev/tty -- 终端文件`。，将该文件从默认阻塞读取的方式改为非阻塞读取，下面代码演示了如何修改：
+
+```c
+```
+
+
+
+
+
+总结 read 函数返回值:
+
+1. 返回非零值: 实际 read 到的字节数
+2. 返回-1: 
+   1. errno != EAGAIN (或!= EWOULDBLOCK) read 出错
+   2. errno == EAGAIN (或== EWOULDBLOCK) 设置了非阻塞读，并且没有 数据到达。
+
+3. 返回 0:读到文件末尾
+
+![Screen Shot 2021-11-24 at 20.22.31](/Users/fszhuangb/Library/Application Support/typora-user-images/Screen Shot 2021-11-24 at 20.22.31.png)
+
+## fcntl函数
+
+改变一个【已经打开】的文件的 访问控制属性。 重点掌握两个参数的使用，F_GETFL 和 F_SETFL。
+
+
+
+fcntl:
+ int (int fd, int cmd, ...)
+
+fd 文件描述符
+ cmd 命令，决定了后续参数个数
+
+位或操作：|=
+
+根据二进制位图（节省内存）来说明：存在的flags为1，不存在的为1，O_NONBLOCK利用位或操作将其设置为1。
+
+![Screen Shot 2021-11-24 at 20.49.40](/Users/fszhuangb/Library/Application Support/typora-user-images/Screen Shot 2021-11-24 at 20.49.40.png)
+
+```c
+int flgs = fcntl(fd, F_GETFL); 
+
+flgs |= O_NONBLOCK
+ fcntl(fd, F_SETFL, flgs); 
+
+```
+
+获取文件状态: F_GETFL 设置文件状态: F_SETFL
+
