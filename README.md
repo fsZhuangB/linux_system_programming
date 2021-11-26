@@ -349,13 +349,74 @@ PCB进程控制块，本质是一个结构体：
 
 下面的代码演示了读取标准输入的操作：
 
-![](https://github.com/fsZhuangB/Photos_Of_Blog/blob/master/photos/Screen%20Shot%202021-11-24%20at%2020.14.33.png?raw=true)
+```C
+#include <stdio.h>
+#include <unistd.h>
+#include <fcntl.h>
+
+#define MAX_READ 20
+int main(void)
+{
+    int numRead;
+    char buffer[MAX_READ + 1];
+    if ((numRead = read(STDIN_FILENO, buffer, MAX_READ)) == -1)
+        printf("Wrong!");
+    buffer[MAX_READ] = '\0';
+    write(STDOUT_FILENO, buffer, numRead);
+
+    return 0;
+}
+
+(base) ➜  Documents ./a.out 
+ds
+ds
+```
 
 
 
 在文件属性中，有一个重要属性，为`O_NONBLOCK`，可以读取终端文件`/dev/tty -- 终端文件`。，将该文件从默认阻塞读取的方式改为非阻塞读取，下面代码演示了如何修改：
 
+通过读取终端文件进行修改
+
+
+
 ```c
+#include <stdio.h>
+#include <unistd.h>
+#include <fcntl.h>
+#include <errno.h>
+#include <string.h>
+#include <stdlib.h>
+
+#define MAX_READ 20
+int main(void)
+{
+    int numRead;
+    char buffer[MAX_READ + 1];
+    int fd, n;
+    fd = open("/dev/tty", O_RDONLY | O_NONBLOCK);
+
+tryagain:
+    n = read(fd, buffer , MAX_READ+1);
+    if (n < 0)
+    {
+        if (errno != EAGAIN)
+        {
+            perror("wrong!");
+            exit(1);
+        }
+        else {
+            write(STDOUT_FILENO, "try_again\n", strlen("try_again\n"));
+            sleep(2);
+            goto tryagain;
+        }
+    }
+    write(STDOUT_FILENO, buffer, n);
+
+    close(fd);
+    return 0;
+}
+
 ```
 
 
