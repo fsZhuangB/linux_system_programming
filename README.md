@@ -436,9 +436,7 @@ tryagain:
 
 ## fcntl函数
 
-改变一个【已经打开】的文件的 访问控制属性。 重点掌握两个参数的使用，F_GETFL 和 F_SETFL。
-
-
+改变一个**已经打开**的文件的 访问控制属性。 重点掌握两个参数的使用，F_GETFL 和 F_SETFL。
 
 fcntl:
  int (int fd, int cmd, ...)
@@ -453,12 +451,50 @@ fd 文件描述符
 ![Screen Shot 2021-11-24 at 20.49.40](/Users/fszhuangb/Library/Application Support/typora-user-images/Screen Shot 2021-11-24 at 20.49.40.png)
 
 ```c
-int flgs = fcntl(fd, F_GETFL); 
+// fcntl的主要使用：    
+int numRead;
+    char buffer[MAX_READ + 1];
+    int flags, n;
+    // 获取stdin属性信息
+    flags = fcntl(STDIN_FILENO, F_GETFL);
+    if (flags == -1)
+    {
+        perror("get error");
+        exit(1);
+    }
+    // 位或操作，为文件增加NON_BLOCK文件属性
+    flags |= O_NONBLOCK;
 
-flgs |= O_NONBLOCK
- fcntl(fd, F_SETFL, flgs); 
+    int ret = fcntl(STDIN_FILENO, F_SETFD, flags);
+    if (ret == -1)
+    {
+        perror("set error");
+        exit(1);
+    }
 
 ```
 
 获取文件状态: F_GETFL 设置文件状态: F_SETFL
 
+## lseek函数
+
+Linux 中可使用系统函数 lseek 来修改文件偏移量(读写位置)
+
+每个打开的文件都记录着当前读写位置，打开文件时读写位置是 0，表示文件开头，通 常读写多少个字节就会将读写位置往后移多少个字节。但是有一个例外，如果以 O_APPEND 方式打开，每次写操作都会在文件末尾追加数据，然后将读写位置移到新的文件末尾。lseek 和标准 I/O 库的 fseek 函数类似，可以移动当前读写位置(或者叫偏移量)。
+
+
+
+**注意，文件“读”和“写”使用同一偏移位置。**
+
+代码验证一下：
+
+```c
+```
+
+应用场景：
+
+1. 获取文件大小
+
+2. 拓展文件大小（要想文件大小真正被拓展，必须引起IO操作）
+
+   
