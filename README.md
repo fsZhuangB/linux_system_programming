@@ -376,9 +376,7 @@ ds
 
 在文件属性中，有一个重要属性，为`O_NONBLOCK`，可以读取终端文件`/dev/tty -- 终端文件`。，将该文件从默认阻塞读取的方式改为非阻塞读取，下面代码演示了如何修改：
 
-通过读取终端文件进行修改
-
-
+通过读取终端文件进行修改：
 
 ```c
 #include <stdio.h>
@@ -419,10 +417,6 @@ tryagain:
 
 ```
 
-
-
-
-
 总结 read 函数返回值:
 
 1. 返回非零值: 实际 read 到的字节数
@@ -432,7 +426,44 @@ tryagain:
 
 3. 返回 0:读到文件末尾
 
-![Screen Shot 2021-11-24 at 20.22.31](/Users/fszhuangb/Library/Application Support/typora-user-images/Screen Shot 2021-11-24 at 20.22.31.png)
+```c
+#include <stdio.h>
+#include <unistd.h>
+#include <fcntl.h>
+#include <errno.h>
+#include <string.h>
+#include <stdlib.h>
+
+#define MAX_READ 20
+int main(void)
+{
+    int numRead;
+    char buffer[MAX_READ + 1];
+    int fd, n;
+    fd = open("/dev/tty", O_RDONLY | O_NONBLOCK);
+
+tryagain:
+    n = read(fd, buffer , MAX_READ+1);
+    if (n < 0)
+    {
+        if (errno != EAGAIN)
+        {
+            perror("wrong!");
+            exit(1);
+        }
+        else {
+            write(STDOUT_FILENO, "try_again\n", strlen("try_again\n"));
+            sleep(2);
+            goto tryagain;
+        }
+    }
+    write(STDOUT_FILENO, buffer, n);
+
+    close(fd);  
+    return 0;
+}
+
+```
 
 ## fcntl函数
 
@@ -478,13 +509,28 @@ int numRead;
 
 ## lseek函数
 
-Linux 中可使用系统函数 lseek 来修改文件偏移量(读写位置)
+函数原型：
 
-每个打开的文件都记录着当前读写位置，打开文件时读写位置是 0，表示文件开头，通 常读写多少个字节就会将读写位置往后移多少个字节。但是有一个例外，如果以 O_APPEND 方式打开，每次写操作都会在文件末尾追加数据，然后将读写位置移到新的文件末尾。lseek 和标准 I/O 库的 fseek 函数类似，可以移动当前读写位置(或者叫偏移量)。
+​	off_t lseek(int fd, off_t offset, int whence);
+
+参数:
+
+-  fd:文件描述符
+- offset: 偏移量，就是将读写指针从 whence 指定位置向后偏移 offset 个单位
+- whence:起始偏移位置: SEEK_SET/SEEK_CUR/SEEK_END
+
+返回值:
+
+- 成功:较起始位置偏移量
+- 失败:-1 errno
+
+在Linux 中可使用系统函数 lseek 来修改文件偏移量，也就是文件的读写位置。
+
+每个打开的文件都记录着当前读写位置，打开文件时读写位置是 0，表示文件开头，通常来说，读写多少个字节就会将读写位置往后移多少个字节。但是有一个例外，如果以 `O_APPEND` 方式打开，每次写操作都会在文件末尾追加数据，然后将读写位置移到新的文件末尾。lseek 和标准 I/O 库的 fseek 函数类似，可以移动当前读写位置(或者叫偏移量)。
 
 
 
-**注意，文件“读”和“写”使用同一偏移位置。**
+**注意，文件“读”和“写”使用同一偏移位置。**意思就是如果写一个句子到空白文件，然后去读取刚才写那个文件，如果不调整光标位置，是读取不到内容的，因为读写指针在内容的末尾。
 
 代码验证一下：
 
@@ -494,7 +540,104 @@ Linux 中可使用系统函数 lseek 来修改文件偏移量(读写位置)
 应用场景：
 
 1. 获取文件大小
-
 2. 拓展文件大小（要想文件大小真正被拓展，必须引起IO操作）
 
-   
+拓展文件大小会造成“文件空洞”，填入一大串`\0`，而不会真的有内容，但是如果用lseek来扩展文件大小，必须引起 IO 才行，所以至少要用write写入一个字符。
+
+也可以使用truncate函数直接拓展文件，简单粗暴：
+
+```c
+int ret = truncate("dict.cp", 250);
+```
+
+
+
+## 传入参数和传出参数
+
+传入参数:
+
+1. 指针作为函数参数。
+2. 通常有 const 关键字修饰 
+3. 指针指向有效区域， 在函数内部做读操作。
+
+例如：
+
+```c
+ char * stpcpy(char * dst, const char * src);
+```
+
+第二个参数就是传入参数。
+
+传出参数:
+
+1. 指针作为函数参数。
+2. 在函数调用之前，指针指向的空间可以无意义，但必须有效。 
+3. 在函数内部，做写操作。
+4. 函数调用结束后，充当函数返回值。
+
+例如：
+
+```c
+ char * stpcpy(char * dst, const char * src);
+```
+
+第一个dst参数就是传出参数。
+
+传入传出参数:
+
+1. 指针作为函数参数。
+2.  在函数调用之前，指针指向的空间有实际意义。 
+3. 在函数内部，先做读操作，后做写操作。
+4. 函数调用结束后，充当函数返回值。
+
+例如：
+
+``` c
+char *
+ strtok_r(char *restrict str, const char *restrict sep, char **restrict lasts);
+```
+
+`char **restrict lasts`就是传入传出参数。
+
+## 文件存储
+
+文件有两部分储存，Inode和dentry
+
+硬链接的本质是为文件创建不同的dentry：
+
+![Screen Shot 2021-11-28 at 09.30.16](/Users/fszhuangb/Library/Application Support/typora-user-images/Screen Shot 2021-11-28 at 09.30.16.png)
+
+### Inode
+
+其本质为结构体，存储文件的属性信息。如:权限、类型、大小、时间、用户、**盘块位置**......也叫作文件属性管理结构，大多数的 inode 都存储在磁盘上。
+
+少量常用、近期使用的 inode 会被缓存到内存中。
+
+### dentry
+
+目录项
+
+## stat函数
+
+获取文件属性，(从 inode 结构体中获取) 
+
+函数原型：
+
+int stat(const char *path, struct stat *buf);
+
+成返回 0;失败返回-1 设置 errno 为恰当值。 参数 2:inode 结构体指针 (传出参数)
+
+参数 1:文件名
+
+文件属性将通过传出参数返回给调用者。
+
+
+
+**问题：**符号链接穿透问题
+
+通过stat函数查看文件mode时，stat会穿透符号链接，直接显示源文件的类型。 可以改用lstat函数查看
+
+
+
+穿透符号链接:stat:会;lstat:不会
+
