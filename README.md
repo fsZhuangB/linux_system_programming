@@ -535,20 +535,91 @@ int numRead;
 代码验证一下：
 
 ```c
+#include <stdio.h>
+#include <unistd.h>
+#include <fcntl.h>
+#include <errno.h>
+#include <string.h>
+#include <stdlib.h>
+#include <sys/stat.h>
+
+int main(int argc, char *argv[])
+{
+    int fd, n;
+    char msg[] = "test for lseek";
+    fd = open("lseek.txt", O_RDWR | O_CREAT, 0644);
+
+    if (fd < 0)
+    {
+        perror("open error");
+        exit(1);
+    }
+    write(fd, msg, strlen(msg));
+    //lseek(fd, 0, SEEK_SET);
+
+    char ch;
+    while ((n = read(fd, &ch, 1))) 
+    {
+        if (n < 0)
+        {
+            perror("read error");
+            exit(1);
+        }
+        write(STDOUT_FILENO, &ch, n);
+    }
+
+    close(fd);
+    return 0;
+
+}
 ```
+
+在上面的代码中，如果注释掉lseek，读是读取不到内容的，因为文件的读写指针在文件最后， `lseek(fd, 0, SEEK_SET);`代码的含义是将文件偏移量设为0，即回到文件开头。
 
 应用场景：
 
-1. 获取文件大小
+1. 获取文件大小，这里会用到SEEK_END参数。
+
+   ```C
+   
+   int main(int argc, char *argv[])
+   {
+       int fd, n;
+       fd = open(argv[1], O_RDWR);
+       if (fd == -1)
+       {
+           perror("bad read");
+           exit(1);
+       }
+       int len = lseek(fd, 0, SEEK_END);
+       if (len < 0)
+       {
+           perror("bad lseek");
+           exit(1);
+       }
+       printf("The file's size is %d", len);
+   
+       close(fd);
+       return 0;
+   
+   }
+   ➜  RemoteWorking git:(master) ✗ ./testsize test.c
+   The file's size is 484#              
+   ```
+
+   
+
 2. 拓展文件大小（要想文件大小真正被拓展，必须引起IO操作）
 
-拓展文件大小会造成“文件空洞”，填入一大串`\0`，而不会真的有内容，但是如果用lseek来扩展文件大小，必须引起 IO 才行，所以至少要用write写入一个字符。
+   拓展文件大小会造成“文件空洞”，填入一大串`\0`，而不会真的有内容，但是如果用lseek来扩展文件大小，必须引起 IO 才行，所以至少要用write写入一个字符。也可以使用truncate函数直接拓展文件，简单粗暴：
 
-也可以使用truncate函数直接拓展文件，简单粗暴：
+   ```c
+   int ret = truncate("dict.cp", 250);
+   ```
 
-```c
-int ret = truncate("dict.cp", 250);
-```
+   
+
+​		
 
 
 
@@ -636,6 +707,42 @@ int stat(const char *path, struct stat *buf);
 **问题：**符号链接穿透问题
 
 通过stat函数查看文件mode时，stat会穿透符号链接，直接显示源文件的类型。 可以改用lstat函数查看
+
+```c
+#include <stdio.h>
+#include <unistd.h>
+#include <fcntl.h>
+#include <errno.h>
+#include <string.h>
+#include <stdlib.h>
+#include <sys/stat.h>
+
+int main(int argc, char *argv[])
+{
+    struct stat buf;
+    int ret = stat(argv[1], &buf);
+    if (ret == -1)
+    {
+        perror("error!");
+        exit(1);
+    }
+    if (S_ISDIR(buf.st_mode))
+    {
+        printf("It's dir");
+    }
+    else if (S_ISREG(buf.st_mode))
+    {
+        printf("It's regular file");
+    }
+    else
+    {
+        printf("bad!");
+    }
+
+    return 0;
+
+}
+```
 
 
 
