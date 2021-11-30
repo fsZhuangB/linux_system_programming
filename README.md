@@ -611,7 +611,78 @@ int main(int argc, char *argv[])
 
 2. 拓展文件大小（要想文件大小真正被拓展，必须引起IO操作）
 
-   拓展文件大小会造成“文件空洞”，填入一大串`\0`，而不会真的有内容，但是如果用lseek来扩展文件大小，必须引起 IO 才行，所以至少要用write写入一个字符。也可以使用truncate函数直接拓展文件，简单粗暴：
+   上面的代码只需要改动一行就可以拓展文件大小：
+
+   ```c
+   
+   int main(int argc, char *argv[])
+   {
+       int fd, n;
+       fd = open(argv[1], O_RDWR);
+       if (fd == -1)
+       {
+           perror("bad read");
+           exit(1);
+       }
+     // 这里改成88，将其拓展成200
+       int len = lseek(fd, 88, SEEK_END);
+       if (len < 0)
+       {
+           perror("bad lseek");
+           exit(1);
+       }
+       printf("The file's size is %d", len);
+   
+       close(fd);
+       return 0;
+   
+   }
+   ```
+
+   但是问题来了：
+
+   ```c
+   ➜  RemoteWorking git:(master) ✗ ./testsize main.cpp 
+   The file's size is 200#                                                                                                                                                                   
+   ➜  RemoteWorking git:(master) ✗ ll
+   total 64K
+   -rw-r--r--. 1 root root   14 Nov 29 21:34 lseek.txt
+   -rw-r--r--. 1 root root  112 Nov 26 22:27 main.cpp
+   ```
+
+   虽然程序显示是拓展了，但是ll一下，发现文件的实际大小还是112，但是如果用lseek来扩展文件大小，必须引起 IO 才行，所以至少要用write写入一个字符。这里问题在于没有引起真正的IO操作：
+
+   ```c
+   
+   int main(int argc, char *argv[])
+   {
+       int fd, n;
+       fd = open(argv[1], O_RDWR);
+       if (fd == -1)
+       {
+           perror("bad read");
+           exit(1);
+       }
+       int len = lseek(fd, 87, SEEK_END);
+       if (len < 0)
+       {
+           perror("bad lseek");
+           exit(1);
+       }
+       write(fd, "&", 1);
+       printf("The file's size is %d", len);
+   
+       close(fd);
+       return 0;
+   
+   }
+   ```
+
+   编译运行一下，发现被写入了字符。
+
+   ![Screen Shot 2021-11-30 at 09.23.41](/Users/fszhuangb/Library/Application Support/typora-user-images/Screen Shot 2021-11-30 at 09.23.41.png)
+
+   拓展文件大小会造成“文件空洞”，填入一大串`\0`，而不会真的有内容，也可以使用truncate函数直接拓展文件，简单粗暴：
 
    ```c
    int ret = truncate("dict.cp", 250);
@@ -744,7 +815,31 @@ int main(int argc, char *argv[])
 }
 ```
 
-
-
 穿透符号链接:stat:会;lstat:不会
+
+ ## link函数
+
+为文件创建硬链接。
+
+## unlink函数
+
+结合link函数，可以实现mv命令
+
+无dentry对应的文件，会被择机释放。
+
+删除文件，只是让文件具备了被释放的条件。**unlink** 函数的特征:清除文件时，如果文件的硬链接数到 0 了，没有 dentry 对应，但该 文件仍不会马上被释放。**要等到所有打开该文件的进程关闭该文件**，系统才会挑时间将该文 件释放掉。 【unlink_exe.c】
+
+## 隐式回收
+
+当进程结束运行时，所有该进程打开的文件会被关闭，申请的内存空间会被释放。系统 的这一特性称之为隐式回收系统资源。 
+
+## 文件目录权限操作
+
+ ## opendir函数
+
+## closedir函数
+
+## readdir函数
+
+
 
