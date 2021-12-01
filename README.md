@@ -465,6 +465,8 @@ tryagain:
 
 ```
 
+有关EAGAIN`和`EWOULDBLOCK错误码的说明：
+
 ## fcntl函数
 
 改变一个**已经打开**的文件的 访问控制属性。 重点掌握两个参数的使用，F_GETFL 和 F_SETFL。
@@ -840,6 +842,19 @@ int main(int argc, char *argv[])
 ## closedir函数
 
 ## readdir函数
+
+ 通过以上函数，实现简单的ls命令:
+
+### 实现递归遍历目录
+
+ls -R
+
+```c
+```
+
+
+
+
 
 
 
