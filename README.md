@@ -775,8 +775,6 @@ int stat(const char *path, struct stat *buf);
 
 文件属性将通过传出参数返回给调用者。
 
-
-
 **问题：**符号链接穿透问题
 
 通过stat函数查看文件mode时，stat会穿透符号链接，直接显示源文件的类型。 可以改用lstat函数查看
@@ -821,15 +819,70 @@ int main(int argc, char *argv[])
 
  ## link函数
 
-为文件创建硬链接。
+为文件创建硬链接，硬链接数就是 dentry 数目。
+
+函数原型:
+` int link(const char *oldpath, const char *newpath)`
 
 ## unlink函数
 
-结合link函数，可以实现mv命令
+用这个结合link函数来实现 mv，用 oldpath 来创建 newpath，最后删除 oldpath 就行。
 
-无dentry对应的文件，会被择机释放。
 
-删除文件，只是让文件具备了被释放的条件。**unlink** 函数的特征:清除文件时，如果文件的硬链接数到 0 了，没有 dentry 对应，但该 文件仍不会马上被释放。**要等到所有打开该文件的进程关闭该文件**，系统才会挑时间将该文 件释放掉。 【unlink_exe.c】
+
+无dentry对应的文件，会被`择机释放`。
+
+删除文件，只是让文件具备了被释放的条件。**unlink** 函数的特征:清除文件时，如果文件的硬链接数到 0 了，没有 dentry 对应，但该 文件仍不会马上被释放。**要等到所有打开该文件的进程关闭该文件**，系统才会挑时间将该文 件释放掉。 下面的程序演示了这一个特性：
+
+```c
+#include <fcntl.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <unistd.h>
+#include <string.h>
+
+int main(void)
+{
+    int fd, ret;
+    char *p = "Writing something";
+    char *p1 = "Writing another";
+    fd = open("temp.txt", O_CREAT | O_RDWR | O_TRUNC, 0644);
+    if (fd < 0)
+    {
+        perror("Open error");
+        exit(1);
+    }
+    // 只要一打开文件就将其unlink，就可以给予文件被unlink的条件，而后面的write都可以完成。
+    unlink("temp.txt");
+
+    ret = write(fd, p, strlen(p));
+    if (ret < 0)
+    {
+        perror("Writing error");
+        exit(1);
+    }
+    printf("Now writing:");
+    ret = write(fd, p1, strlen(p1));
+    getchar();
+    if (ret < 0)
+    {
+        perror("Writing error");
+        exit(1);
+    }
+    // 如果出错，即使程序崩溃，temp.txt也只能被删除，所以刚刚open文件，就要将文件unlink
+    p[3] = "h"; // 这里会发生段错误
+    close(fd);
+
+    return 0;
+}
+```
+
+上面的程序，在程序中加入段错误成分，段错误在 unlink 之前，由于发生段错误，程序后续删除 temp.txt 的 dentry 部分就不会再执行，temp.txt 就保留了下来，这是不科学的。
+
+解决办法是检测 fd 有效性后，立即释放 temp.txt，由于进程未结束，虽然 temp.txt 的硬链接数已 经为 0，但还不会立即释放，仍然存在，要等到程序执行完才会释放。这样就能避免程序出错导致临 时文件保留下来。
+ 因为文件创建后，硬链接数立马减为 0，即使程序异常退出，这个文件也会被清理掉。这时候的内容 是写在内核空间的缓冲区。
+
+如果没有隐式回收的话，这个文件描述符会保留， 多次出现这种情况会导致系统文件描述符耗尽。所以隐式回收会在程序结束时收回它打开的文件使用 的文件描述符。
 
 ## 隐式回收
 
@@ -837,13 +890,50 @@ int main(int argc, char *argv[])
 
 ## 文件目录权限操作
 
- ## opendir函数
+一共三个比较重要的函数：
 
-## closedir函数
+**opendir函数**
 
-## readdir函数
+DIR * opendir(char *name);
+**closedir函数**
+
+ int closedir(DIR *dp);
+
+**readdir函数**
+
+ struct dirent *readdir(DIR * dp);
+
+```c
+   struct dirent {
+       inode;
+       char dname[256];
+   }
+```
 
  通过以上函数，实现简单的ls命令:
+
+```c
+int main(int argc, char* argv[])
+{
+    DIR * dp;
+    struct dirent* dirp;
+    dp = opendir(argv[1]);
+    if (dp == NULL)
+    {
+        perror("Open dir error!");
+        exit(1);
+    }
+
+    while (dirp = readdir(dp))
+    {
+        printf("%s\t", dirp->d_name);
+    }
+    printf("\n");
+    closedir(dp);
+}
+```
+
+
 
 ### 实现递归遍历目录
 
