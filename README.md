@@ -939,7 +939,76 @@ int main(int argc, char* argv[])
 
 ls -R
 
+主要思路：
+
+1. 判断命令行参数：
+   - 什么都不输入，`argc == 1`，那么直接读取默认当前目录。
+   - 使用isFile函数，判断是否为文件，或者为目录。
+2. isFile函数：
+   - 首先读取文件status，判断是文件还是目录
+   - 如果是文件，那么将文件的s_size读取出来
+   - 如果是目录，调用read_dir函数读取目录
+3. read_dir函数：
+   - 使用opendir，readdir和closedir对目录进行读取
+   - 需要注意的是对于`.`目录和`..`目录的特殊处理，防止造成无限递归
+   - 其次要注意读取到的文件/目录不能直接传入，而是要利用路径进行字符串拼接，传入绝对路径。
+
 ```c
+// 完整示例代码
+void isFile(char *name);
+
+void read_dir(char* dir)
+{
+    char buffer[256];
+    DIR *dp = opendir(dir);
+    struct dirent* dren;
+    if (dp == NULL)
+    { 
+        perror("open dir error");
+        exit(1);
+    }
+    while ((dren = readdir(dp)) != NULL)
+    {
+        if (strcmp(dren->d_name, ".") == 0 || strcmp(dren->d_name, "..") == 0){
+            continue;
+        }
+        sprintf(buffer, "%s/%s", dir, dren->d_name);
+        isFile(buffer);
+    }
+    closedir(dp);
+
+}
+// 查看是否为文件
+ void isFile(char * name)
+ {
+     int ret = 0;
+     struct stat sb;
+     int fd = stat(name, &sb);
+     if (fd < 0)
+     {
+         perror("Wrong fd!");
+         exit(1);
+     }
+     if (S_ISDIR(sb.st_mode))
+     {
+        read_dir(name);
+     }
+     printf("%s\t%ld\n", name, sb.st_size);
+
+ }
+int main(int argc, char* argv[])
+{
+    if (argc == 1)
+    {
+        isFile(".");
+    }
+    else 
+    {
+        isFile(argv[1]);
+    }
+    return 0;
+
+}
 ```
 
 
