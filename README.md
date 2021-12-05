@@ -1011,9 +1011,36 @@ int main(int argc, char* argv[])
 }
 ```
 
+## 重定向：dup，dup2
+
+## dup
+
+功能:文件描述符拷贝。 使用现有的文件描述符，拷贝生成一个新的文件描述符，且函数调用前后这个两个文件
+
+描述符指向同一文件。
+ int dup(int oldfd); 成功:返回一个新文件描述符;失败:-1 设置 errno 为相应值
+
+当作一个保存文件副本的作用，
+
+## dup2
+
+浅拷贝的感觉，拷贝一个旧文件描述符到新的文件描述符中。用来做重定向，将写入新文件描述符的文字写入旧文件描述符。
+
+用 dup2 将 fd1 复制给了 fd2，于是在对 fd2 指向的文件进行写操作时，实际上就是对 fd1 指向的 hello.c 进行写操作。
+ 这里需要注意一个问题，由于 hello.c 和 hello2.c 都是空文件，所以直接写进去没关系。但如果 hello.c 是非空的，写进去的内容默认从文件头部开始写，会覆盖原有内容。
+
+dup2 也可以用于标准输入输出的重定向。
+
+![Screen Shot 2021-12-05 at 19.56.21](/Users/fszhuangb/Library/Application Support/typora-user-images/Screen Shot 2021-12-05 at 19.56.21.png)
 
 
 
+![Screen Shot 2021-12-05 at 20.11.42](/Users/fszhuangb/Library/Application Support/typora-user-images/Screen Shot 2021-12-05 at 20.11.42.png)
 
 
 
+## fcntl实现dup2功能
+
+F_DUPFD参数，用第三个参数来重定向，第三个参数可以指定文件描述符。
+
+## 
