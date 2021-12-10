@@ -1088,3 +1088,20 @@ F_DUPFD参数，用第三个参数来重定向，第三个参数可以指定文�
 此之间互不影响)
  如:同时开两个终端。各自都有一个 bash 但彼此 ID 不同。
 
+## 11.1 进程概念
+
+
+
+## 11.4 进程三状态模型
+
+- 
+
+
+
+## 11.5 进程挂起
+
+long-term scheduling
+
+short-term scheduling
+
+Mid-term scheduling
