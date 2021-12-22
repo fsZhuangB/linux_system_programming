@@ -1116,7 +1116,7 @@ unix唯一的分时复用操作系统
 
 ### CPU和MMU
 
-MMU虚拟内存映射单元
+MMU虚拟内存映射单元的图
 
 
 
@@ -1164,7 +1164,413 @@ MMU可以把内存空间不连续的映射为连续的
 
 ### fork()函数
 
-返回
+父进程返回：子进程pid
+
+子进程返回：0
+
+子进程将父进程的代码复制一遍
+
+![Screen Shot 2021-12-22 at 13.21.53](/Users/fszhuangb/Library/Application Support/typora-user-images/Screen Shot 2021-12-22 at 13.21.53.png)
+
+下面的代码会打印两遍：
+
+fork 之前的代码，父子进程都有，但是只有父进程执行了，子进程没有执行，fork 之后的代码，父子进程都有机会执行。
+
+```c
+#include <unistd.h>
+#include <stdio.h>
+#include <string.h>
+#include <stdlib.h>
+
+int main(void)
+{
+    printf("before fork()\n");
+    printf("before fork()\n");
+    printf("before fork()\n");
+    printf("before fork()\n");
+
+    pid_t pid = fork();
+    if (pid == -1)
+    { perror("wrong fork!"); exit(1); }
+    else if (pid == 0)
+    {
+        printf("I am child----");
+        printf("my id is %d\n", pid);
+    }
+    else 
+    {
+        printf("I am parent----");
+        printf("my id is %d\n", pid);
+
+    }
+    printf("end of file------\n");
+}
+// 结果：
+before fork()
+before fork()
+before fork()
+before fork()
+I am parent----my id is 1080
+end of file------
+I am child----my id is 0
+end of file------
+```
 
 ### getpid和getppid
+
+加入两个函数
+
+```c
+#include <unistd.h>
+#include <stdio.h>
+#include <string.h>
+#include <stdlib.h>
+
+int main(void)
+{
+    printf("before fork()\n");
+    printf("before fork()\n");
+    printf("before fork()\n");
+    printf("before fork()\n");
+
+    pid_t pid = fork();
+    if (pid == -1)
+    { perror("wrong fork!"); exit(1); }
+    else if (pid == 0)
+    {
+        printf("I am child----my id is %d, \
+                my id from getpid is %d, \
+                my parent id from getppid is %d\n"\
+                , pid, getpid(), getppid());
+    }
+    else 
+    {
+        printf("I am parent----child id is %d, \
+                my id from getpid is %d, \
+                my parent id from getppid is %d\n"\
+                , pid, getpid(), getppid());
+    }
+    printf("end of file------\n");
+}
+
+➜  chapter2-process git:(master) ✗ ./a.out 
+before fork()
+before fork()
+before fork()
+before fork()
+I am parent----child id is 1585,                 my id from getpid is 1584,                 my parent id from getppid is 125
+end of file------
+I am child----my id is 0,                 my id from getpid is 1585,                 my parent id from getppid is 1584
+end of file------
+```
+
+
+
+### 问题：循环创建n个子进程
+
+![Screen Shot 2021-12-22 at 15.41.58](/Users/fszhuangb/Library/Application Support/typora-user-images/Screen Shot 2021-12-22 at 15.41.58.png)
+
+从上图我们可以很清晰的看到，当 n 为 3 时候，循环创建了**(2^n)-1** 个子进程，而不是 N 的子进程。需要在循环的过程，保证子进程不再执行 fork ，因此当(fork() == 0)时，子进程 应该立即 break;才正确。
+
+正确代码：
+
+```C
+
+int main(void)
+{
+    for (int i = 0; i < 5; ++i)
+    {
+        pid_t pid = fork();
+        if (pid == 0)
+        { break; }
+        else
+        {
+            printf("I am parent:%d\n", pid);
+        }
+    }
+}
+```
+
+可以在循环外打印次序，但是不是顺序执行：
+
+```C
+// 循环创建子进程
+#include <unistd.h>
+#include <stdio.h>
+#include <string.h>
+#include <stdlib.h>
+#include <pthread.h>
+#include <sys/wait.h>
+int main(void)
+{
+    int i;
+    pid_t pid;
+    for (i = 0; i < 5; ++i)
+    {
+        pid = fork();
+        if (pid == 0)
+        { break; }
+    }
+    if (i == 5)
+    { printf("I am parent\n"); }
+    else {
+        printf("I am %dth child\n", i+1);
+    }
+
+
+➜  chapter2-process git:(master) ✗ ./nchild 
+I am 1th child
+I am 2th child
+I am 3th child
+I am parent
+I am 4th child
+I am 5th child
+```
+
+现在还有两个问题：
+
+**一个就是包括父进程在内的所有进程不是按顺序出现**，多运行几次，发现是随机序列出现的。这主要因为，对操作系统而言，这几个子进程几乎是同时出现的，它们和父进程一起争夺 cpu，谁抢到， 谁打印，所以出现顺序是随机的。
+
+**第二问题就是终端提示符混在了输出里**，这个是因为，loop_fork 是终端的子进程，**一旦 loop_fork 执行完，也就是父进程执行完毕，**终端就会打印提示符。就像之前没有子进程的程序，一旦执行完，就出现了终端 提示符。这里也就是这个道理，loop_fork 执行完了，终端提示符出现，然而 loop_fork 的子进程还 没执行完，所以输出就混在一起了。
+
+
+
+解决方法，让父进程最后结束即可让他们顺序执行，**加一个wait(0)**，让所有父进程等待其后面的子进程先执行：
+
+```c
+// 循环创建子进程
+#include <unistd.h>
+#include <stdio.h>
+#include <string.h>
+#include <stdlib.h>
+#include <pthread.h>
+#include <sys/wait.h>
+int main(void)
+{
+    int i;
+    pid_t pid;
+    for (i = 0; i < 5; ++i)
+    {
+        pid = fork();
+        if (pid == 0)
+        { break; }
+        else {
+            wait(0);
+        }
+    }
+    if (i == 5)
+    { printf("I am parent\n"); }
+    else {
+        printf("I am %dth child\n", i+1);
+    }
+}
+
+➜  chapter2-process git:(master) ✗ ./nchild
+I am 1th child
+I am 2th child
+I am 3th child
+I am 4th child
+I am 5th child
+I am parent
+```
+
+通过视频就可以看出来，最先允许的loop_fork进程最后打印了“I am parent”。
+
+### 进程共享内容
+
+父子进程之间在 fork 后。有哪些相同，那些相异之处呢?
+
+**刚 fork 之后:**
+
+父子相同处: 全局变量、.data（数据段）、.text（代码段）、栈、堆、环境变量、用户 ID、**宿主目录、进程工作目录、信号处理方式...**后面三个不常用
+
+父子不同处: 1.进程 ID 2.fork 返回值 3.父进程 ID 4.进程运行时间 5.闹钟(定时器) 6.未决信号集
+
+似乎，子进程复制了父进程 0-3G 用户空间内容，以及父进程的 PCB，但 pid 不同。真 的每 fork 一个子进程都要将父进程的 0-3G 地址空间完全拷贝一份，然后在映射至物理内存 吗?
+
+当然不是!父子进程间遵循读时共享写时复制的原则。这样设计，无论子进程执行父进 程的逻辑还是执行自己的逻辑都能节省内存开销。
+
+**父子进程真正共享：**
+
+1. 文件描述符
+2. mmap映射区
+
+#### 父子进程是否共享全局变量？
+
+注意一点：
+
+父子进程是不共享全局变量！原因是**读时共享写时复制**原则！
+
+### exec 函数族
+
+exec函数不能够返回
+
+fork 创建子进程后执行的是和父进程相同的程序(但有可能执行不同的代码分支)，子 进程往往要调用一种 exec 函数以执行另一个程序。当进程调用一种 exec 函数时，该进程的 用户空间代码和数据完全被新程序替换，从新程序的启动例程开始执行。调用 exec 并不创 建新进程，所以调用 exec 前后该进程的 id 并未改变。
+
+**将当前进程的.text、.data 替换为所要加载的程序的.text、.data，然后让进程从新的.text 第一条指令开始执行，但进程 ID 不变，换核不换壳。**
+
+重点看两个：
+
+#### execlp函数
+
+注意最后参数要加上哨兵`NULL`，因为是一个变参：
+
+同时，可变参数那里，是从 argv[0]开始计算的。
+
+```C
+#include <unistd.h>
+#include <stdio.h>
+#include <string.h>
+#include <stdlib.h>
+#include <pthread.h>
+#include <sys/wait.h>
+int main(void)
+{
+    pid_t pid = fork();
+    if (pid == -1)
+    { perror("wrong fork!"); exit(1); }
+    else if (pid == 0)
+    {
+        // 注意execlp的第二个参数才是argv[0]，所以要多传一个ls进去
+        // 错误写法：execlp("ls", "-l","-h" NULL);
+        execlp("ls", "ls", "-l","-h" NULL);
+        // 如果出错才会返回
+        perror("exec error!");
+        exit(1);
+    }
+    else 
+    {
+        wait(0);
+        printf("I am parents: %d\n", pid);
+    }
+}
+
+➜  chapter2-process git:(master) ✗ ./execfork 
+total 48
+-rwxr-xr-x. 1 root root 8608 Dec 22 15:27 a.out
+-rw-r--r--. 1 root root  450 Dec 22 15:57 create_n_child.c
+-rwxr-xr-x. 1 root root 8520 Dec 22 16:58 execfork
+-rw-r--r--. 1 root root  561 Dec 22 16:57 fork_exec.c
+-rw-r--r--. 1 root root  841 Dec 22 15:27 myfork.c
+-rwxr-xr-x. 1 root root 8440 Dec 22 15:57 nchild
+I am parents: 3545
+```
+
+下面使用 execl 来让子程序调用自定义的程序。
+ int execl(const char *path, const char *arg, ...) 这里要注意，和 execlp 不同的是，第一个参数是路径，不是文件名。 这个路径用相对路径和绝对路径都行。
+
+使用execl函数：
+
+只是第一个参数不一样，是path：
+
+```c
+int main(void)
+{
+    pid_t pid = fork();
+    if (pid == -1)
+    { perror("wrong fork!"); exit(1); }
+    else if (pid == 0)
+    {
+        // 注意execlp的第二个参数才是argv[0]，所以要多传一个ls进去
+        //execlp("ls", "ls", "-l", NULL);
+        execl("./nchild", "./nchild", NULL);
+        // 如果出错才会返回
+        perror("exec error!");
+        exit(1);
+    }
+    else 
+    {
+        wait(0);
+        printf("I am parents: %d\n", pid);
+        
+    }
+}
+```
+
+
+
+### exec 函数族特性
+
+写一个程序，使用 execlp 执行进程查看，并将结果输出到文件里。 要用到 open, execlp, dup2
+
+代码如下：
+
+```c
+#include <unistd.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <fcntl.h>
+
+int main(void)
+{
+    int fd = open("ps.out", O_RDWR | O_CREAT | O_TRUNC, 0644);
+    if (fd < 0)
+    {
+        perror("wrong open!");
+        exit(1);
+    }
+    dup2(fd, STDOUT_FILENO);
+    execlp("ps", "ps", "aux", NULL);
+    perror("exec wrong");
+    
+    return 0;
+}
+```
+
+
+
+#### execvp用法
+
+只是把后面变参换成了
+
+`char* argv[] = {"ls", "-l", "-h", NULL}`
+
+### exec 函数族一般规律
+
+exec 函数一旦调用成功，即执行新的程序，不返回。只有失败才返回，错误值-1，所以通常我们直接在 exec 函数调用后直接调用 perror()，和 exit()，无需 if 判断。
+
+- l(list) 命令行参数列表
+- p(path) 搜索 file 时使用 path 变量
+- v(vector) 使用命令行参数数组
+- e(environment) 使用环境变量数组，不适用进程原有的环境变量，设置新加载程序运行的环境变量
+
+事实上，只有 execve 是真正的系统调用，其他 5 个函数最终都调用 execve，是库函数，所以 execve 在 man 手册第二节，其它函数在 man 手册第 3 节。
+
+### 孤儿进程和僵尸进程
+
+**孤儿进程:**
+父进程先于子进终止，子进程沦为“孤儿进程”，会被 init 进程领养。
+
+demo演示：
+
+
+
+**僵尸进程:**
+
+死亡以后没来得及回收的为**僵尸态**
+
+子进程终止，父进程尚未对子进程进行回收，在此期间，子进程为“僵尸进程”。 kill 对其 无效。这里要注意，每个进程结束后都必然会经历僵尸态，时间长短的差别而已。
+
+子进程终止时，子进程残留资源 PCB 存放于内核中，PCB 记录了进程结束原因，进程回收就是回收 PCB。
+
+回收子进程方式：
+
+​	回收僵尸进程，得 kill 它的父进程，让孤儿院去回收它。
+
+​	kill命令无法杀死僵尸进程
+
+demo演示：
+
+### wait函数回收子进程
+
+父进程调用 wait 函数可以回收子进程终止信息。该函数有三个功能: 
+
+1. 阻塞等待子进程退出
+2. 回收子进程残留资源
+3. 获取子进程结束状态(退出原因)。
+
+wait函数的使用：
+
+```c
+```
 
