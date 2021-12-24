@@ -1569,8 +1569,116 @@ demo演示：
 2. 回收子进程残留资源
 3. 获取子进程结束状态(退出原因)。
 
-wait函数的使用：
+wait 函数: 回收子进程退出资源， 阻塞回收任意一个。 
+
+`pid_t wait(int *status)`
+参数:(传出) status用来回收进程的状态。
+返回值:成功: 回收进程的pid
+
+失败: -1， errno
+
+
+
+当进程终止时，操作系统的隐式回收机制会:
+
+1. 关闭所有文件描述符
+2. 释放用户空间分配的内存。内核的 PCB 仍存在。其中保存该进程的退出状态。(正常终止→退出值;异常 终止→终止信号)
+
+可使用 wait 函数传出参数 status 来保存进程的退出状态。借助宏函数来进一步判断进程终止的具体原因。
+
+wait函数与宏的使用：*很重要！*
 
 ```c
+#include <unistd.h>
+#include <stdio.h>
+#include <string.h>
+#include <stdlib.h>
+#include <pthread.h>
+#include <sys/wait.h>
+int main(void)
+{
+    pid_t pid, wpid;
+    int status;
+    pid = fork();
+    if (pid == 0)
+    {
+        printf("I am child %d, sleep 5s,\n", getpid());
+        sleep(10);
+        printf("Child die-----\n");
+        printf("The status is %d\n", status);
+        return 73;
+    }
+    else if (pid > 0)
+    {
+      // wpid = wait(NULL) , 指不关心子进程结束原因
+        wpid = wait(&status);
+        if (wpid == -1)
+        {
+            perror("wait error\n");
+            exit(1);
+        }
+        printf("parent wait finished\n");
+        // 为真，说明子进程正常终止
+        if (WIFEXITED(status))
+        {
+            printf("Child exit with %d\n ", WEXITSTATUS(status));
+        }
+        // 信号终止，所有程序异常终止的情况都是信号
+        if(WIFSIGNALED(status))
+        {
+            printf("Child exit with %d\n", WTERMSIG(status));
+        }
+    }
+    else 
+    {
+        perror("fork error\n");
+        exit(1);
+    }
+    return 0;
+}
+
 ```
+
+- WIFEXITED(status) 为非 0 → 进程正常结束
+  -  WEXITSTATUS(status) 如上宏为真，使用此宏 → 获取进程退出状态 (exit 的参数)
+-  WIFSIGNALED(status) 为非 0 → 进程异常终止
+  - WTERMSIG(status) 如上宏为真，使用此宏 → 取得使进程终止的那个信号的编号。 
+- WIFSTOPPED(status) 为非 0 → 进程处于暂停状态
+  - WSTOPSIG(status) 如上宏为真，使用此宏 → 取得使进程暂停的那个信号的编号。
+  -  WIFCONTINUED(status) 为真 → 进程暂停后已经继续运行
+
+
+
+### waitpid函数，非常重要！
+
+记得总结waitpid函数
+
+在回收子进程的过程中，要注意子进程组的概念
+
+注意：一次wait/wait_pid调用，**一次只能回收一个子进程**
+
+```c
+pid_t waitpid(pid_t pid, int *stat_loc, int options);
+```
+
+
+
+
+
+1. 无差别回收，**-1** 回收任意子进程(相当于 **wait**)
+
+   ```c
+   ```
+
+
+
+### waitpid回收多个子进程
+
+阻塞方式回收：
+
+
+
+非阻塞方式回收：
+
+
 
