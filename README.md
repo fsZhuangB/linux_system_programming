@@ -1651,34 +1651,294 @@ int main(void)
 
 ### waitpid函数，非常重要！
 
-记得总结waitpid函数
-
-在回收子进程的过程中，要注意子进程组的概念
-
-注意：一次wait/wait_pid调用，**一次只能回收一个子进程**
+waitpid函数可以指定一个进程进行回收，其函数原型如下：
 
 ```c
 pid_t waitpid(pid_t pid, int *stat_loc, int options);
 ```
 
+第一个参数的具体内容如下：
 
-
-
-
-1. 无差别回收，**-1** 回收任意子进程(相当于 **wait**)
+1. \>0指某一个子进程的pid
 
    ```c
+   waitpid(pid, &status, options)
    ```
 
+   
 
+2. 无差别回收，**-1** 回收任意子进程(相当于 **wait**)
+
+   ```c
+   waitpid(-1, &status, 0) == wait(&status);
+   ```
+
+3. 0:指同组的子进程
+
+返回值参数如下：
+
+1. \>0指成功回收的子进程pid
+2. 0 : 函数调用时， 参 3 指定了 WNOHANG， 并且，没有子进程结束，没有导致没有回收到子进程
+3. -1: 失败。errno
+
+第三个参数可以通过WNOHANG来指定非阻塞回收。
+
+在回收子进程的过程中，要注意子进程组的概念，对于父进程fork出来的子进程，都属于同一个组。
+
+一次 wait/waitpid 函数调用，只能回收一个子进程。上一个例子，父进程产生了 5 个子进程， wait 会随机回收一个，捡到哪个算哪个。
+
+老师举例的错误代码如下：
+
+```c
+// 循环创建子进程
+#include <unistd.h>
+#include <stdio.h>
+#include <string.h>
+#include <stdlib.h>
+#include <pthread.h>
+#include <sys/wait.h>
+int main(void)
+{
+    int i;
+    pid_t pid, wpid;
+    for (i = 0; i < 5; ++i)
+    {
+        pid = fork();
+        if (pid == 0)
+        { 
+            if (i == 2)
+            {
+                pid = getpid();
+                //printf("------pid = %d\n", pid);
+            }
+            break;
+        }
+        // else {
+        //     wait(0);
+        // }
+    }
+    if (5 == i)
+    { 
+        //sleep(10);
+        //waitpid(-1, NULL, WNOHANG);
+        wait(NULL);
+        //printf("------in parent , before waitpid, pid= %d\n", pid);
+       // wpid = waitpid(pid, NULL, 0); //指定一个进程回收
+        if (wpid == -1)
+        {
+            perror("wrong wait pid!\n");
+            exit(1);
+        }
+        // wpid如果返回0，说明没有回收到
+        printf("I am parent, wait a child finished:%d\n", wpid); 
+    }
+    else {
+        sleep(i);
+        printf("I am %dth child, my pid is %d\n", i+1, getpid());
+    }
+}
+```
+
+老师的判断语句是在if(pid == 0)时，再用i==2获取第三个子进程，但是此时的pid的值属于子进程空间的变量，父进程并不能读取到，所以应该在父进程空间内对于pid进行赋值，使得父进程获取到子进程pid：
+
+```c
+    for (i = 0; i < 5; ++i)
+    {
+        pid = fork();
+        if (pid == 0)
+        { 
+            break;
+        }
+        if (i == 2)
+        {
+            tmppid = pid;
+        }
+    }
+```
+
+![Screen Shot 2021-12-25 at 15.31.54](/Users/fszhuangb/Library/Application Support/typora-user-images/Screen Shot 2021-12-25 at 15.31.54.png)
+
+改动之后，可以看出来没问题了，获取到了指定的pid
+
+waitpid的回收实现有两种，一个是阻塞等待回收指定进程，一个是非阻塞，但是用 sleep 延时父进程，以保证待回收的指定子进程已经执行结束。上面这个代码使用的阻塞回收：
+
+```c
+wpid = waitpid(tmpid, NULL, 0); //指定一个进程回收, 阻塞回收
+```
+
+这个方案的问题在于终端提示符会和输出混杂在一起。下面使用非阻塞回收 +延时的方法，这样终端提示符就不会混在输出里：
+
+```C
+sleep(10);
+printf("------in parent , before waitpid, pid= %d\n", tmppid);
+wpid = waitpid(tmppid, NULL, WNOHANG); // 非阻塞 + 延时的方法
+
+(base) ➜  leetcode-revise (master) ✗ ./test 
+I am 1th child, my pid is 78964
+I am 2th child, my pid is 78965
+I am 3th child, my pid is 78966
+I am 4th child, my pid is 78967
+I am 5th child, my pid is 78968
+------in parent , before waitpid, pid= 78966
+I am parent, wait a child finished:78966
+```
 
 ### waitpid回收多个子进程
 
+
+
+为了让waitpid回收多个子进程，可以使用while循环回收，
+
 阻塞方式回收：
 
+```C
+       // 阻塞方式回收
+        while ((wpid = waitpid(-1, NULL, 0)))
+        {
+            printf("wait child %d \n", wpid);
+        }
+```
 
+结果如下：
+
+```c
+(base) ➜  leetcode-revise (master) ✗ ./test 
+I am 1th child, my pid is 79204
+wait child 79204 
+I am 2th child, my pid is 79205
+wait child 79205 
+I am 3th child, my pid is 79206
+wait child 79206 
+I am 4th child, my pid is 79207
+wait child 79207 
+I am 5th child, my pid is 79208
+wait child 79208 
+wait child -1 
+```
+
+可以看到，当子进程全部被回收之后，会返回-1。
 
 非阻塞方式回收：
 
+在这里要多加一个判断，因为wpid多数都是返回的0，意思是未回收到，所以当判断到返回为0时，可以sleep(1)再继续回收。
 
+```C
+        while ((wpid = waitpid(-1, NULL, WNOHANG)) != -1)
+        {
+            // 做个判断
+            if (wpid > 0)
+                printf("wait child %d \n", wpid);
+            else if (wpid == 0)
+            {
+                sleep(1);
+                continue;
+            }
+        }
+```
+
+
+
+waitpid作业：
+
+作业:父进程 fork 3 个子进程，三个子进程一个调用 ps 命令， 一个调用自定义程序
+
+1(正常)，一个调用自定义程序 2(会出段错误)。父进程使用 waitpid 对其子进程进行回收。
+
+```c
+// homework of waitpid
+#include <unistd.h>
+#include <stdio.h>
+#include <string.h>
+#include <stdlib.h>
+#include <pthread.h>
+#include <sys/wait.h>
+int main(void)
+{
+    pid_t pid,wpid, tmppid;
+    int status;
+    int i;
+    for (i = 0; i < 3; ++i)
+    {
+        pid = fork();
+        // 如果是子进程
+        if (pid == 0)
+            { break; }
+    }
+    if (i == 0)
+    {
+        printf("I am child process 1, mypid is %d, exec ps command\n", getpid());
+        execlp("ps", "ps", "a", NULL);
+    }
+    else if (i == 1)
+    {
+        printf("I am child process 2, mypid is %d, exec print command\n", getpid());
+        execl("./child2", "./child2", NULL);
+    }
+    else if (i == 2)
+    {
+        printf("I am child process 3, mypid is %d, exec bad command\n", getpid());
+        execl("./child3", "./child3", NULL);
+    }
+    else if (i == 3)
+    {
+        // 阻塞方式回收
+        while ((wpid = waitpid(-1, &status, WNOHANG)) != -1)
+        {
+            if (wpid == 0)
+            {
+                sleep(1);
+                continue;
+            }
+            else {
+                printf("wait child %d \n", wpid);
+                        // 正常终止
+                if (WIFEXITED(status))
+                {
+                    printf("Child exit normally:");
+                    printf("Child exit with %d\n ", WEXITSTATUS(status));
+                }
+                // 信号终止，所有程序异常终止的情况都是信号
+                if(WIFSIGNALED(status))
+                {
+                    printf("Child exit abnormally, with:");
+                    printf("Child exit with %d\n", WTERMSIG(status));
+                }
+            }
+        }
+        if (wpid == -1)
+        {
+            perror("wrong wait pid!\n");
+            exit(1);
+        }
+        // wpid如果返回0，说明没有回收到
+    }
+    else
+    {
+        sleep(i);
+        printf("I am %dth child, my pid is %d\n", i+1, getpid());
+    }
+    return 0;
+}
+
+// 结果：
+➜  chapter2-process git:(master) ✗ ./waitpid_hw
+I am child process 1, mypid is 1628, exec ps command
+I am child process 2, mypid is 1629, exec print command
+I am child process 3, mypid is 1630, exec bad command
+hello!--------------
+    PID TTY      STAT   TIME COMMAND
+    125 pts/0    Ss     0:01 /bin/zsh
+   1627 pts/0    S+     0:00 ./waitpid_hw
+   1628 pts/0    R+     0:00 ps a
+   1629 pts/0    Z+     0:00 [child2] <defunct>
+   1630 pts/0    S+     0:00 ./child3
+wait child 1628 
+Child exit normally:Child exit with 0
+ wait child 1629 
+Child exit normally:Child exit with 0
+ wait child 1630 
+Child exit abnormally, with:Child exit with 11
+wrong wait pid!
+: No child processes
+```
 
