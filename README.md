@@ -1392,7 +1392,7 @@ I am parent
 
 **父子进程真正共享：**
 
-1. 文件描述符
+1. **文件描述符**，保证了偏移量的共享，不会彼此覆盖输出内容，但是需要进程同步让二者的输出不要混杂在一起。
 2. mmap映射区
 
 #### 父子进程是否共享全局变量？
@@ -1946,6 +1946,43 @@ wrong wait pid!
 
 1. wait和waitpid只能回收子进程
 2. 一次只能清理一个，多清理借助循环
+
+### vfork函数
+
+更有效率的fork()，但是要尽量避免使用
+
+1. 无需为子进程复制虚拟内存页或者页表，子进程共享父进程内存，直至调用了exec()或者_exit()。
+2. 子进程调用了exec()或者_exit()之前，将暂停执行父进程
+
+输出显示，子进程对变量istack的修改影响了父进程的对应变量。
+
+```c
+➜  chapter2-process git:(master) ✗ ./a.out 
+Child executing
+Parent
+istack=666
+```
+
+```C
+int main(void)
+{
+    int istack = 222;
+    switch (vfork()) {
+    case -1:
+        perror("wrong");
+        exit(1);
+    case 0:
+        sleep(3);
+        write(STDOUT_FILENO, "Child executing\n", strlen("Child executing\n"));
+        istack *= 3;
+        exit(EXIT_SUCCESS);
+    default:
+        write(STDOUT_FILENO, "Parent\n", strlen("Parent\n"));
+        printf("istack=%d\n", istack);
+        exit(EXIT_SUCCESS);
+    }
+}
+```
 
 
 
