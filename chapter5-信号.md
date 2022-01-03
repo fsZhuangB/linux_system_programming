@@ -226,7 +226,7 @@ int sigprocmask(int how, const sigset_t *set, sigset_t *oldset); 成功:0;失败
 参数:
 
 - set:指用户自定义集合，传入参数，是一个位图，set 中哪位置 1，就表示当前进程屏蔽哪个信号。 
-- oldset：旧有的信号集，传出参数，保存旧的信号屏蔽集。
+- oldset：**旧有的信号集，传出参数，保存旧的信号屏蔽集。**
 - how参数取值: 假设当前的信号屏蔽字为mask
   - SIG_BLOCK: 当 how 设置为此值，set 表示需要屏蔽（阻塞）的信号。相当于 mask = mask | set
   - SIG_UNBLOCK: 当 how 设置为此，set 表示需要解除屏蔽（解除阻塞）的信号。相当于 mask = mask & ~set
@@ -251,7 +251,68 @@ int sigprocmask(int how, const sigset_t *set, sigset_t *oldset); 成功:0;失败
 2. sigaddset设置信号集
 3. sigprocmask设置PCB中的信号集
 
-练习:编写程序。把所有常规信号的未决状态打印至屏幕。
+代码如下：
+
+```c
+int main(void)
+{
+    sigset_t myset,oldset;
+    sigemptyset(&myset);
+    // 屏蔽2号信号
+    sigaddset(&myset, SIGINT);
+    sigprocmask(SIG_BLOCK, &myset, &oldset);
+    while (1) 
+    {
+        printf("you have add SIGINT to set!\n");
+        sleep(1);
+    }    
+}
+```
+
+练习:编写程序。把所有常规信号的未决状态打印至屏幕：该代码没有检查返回值，要注意
+
+```c
+void print_signal(sigset_t* set)
+{
+    int i;
+    for (i = 1; i <= 32; ++i)
+    {
+        // i用来指代信号
+        if (sigismember(set, i))
+        {
+            printf("%d",1);
+        }
+        else {
+            printf("%d",0);
+        }
+    }
+}
+int main()
+{
+    sigset_t myset,oldset,pending_set;
+    sigemptyset(&myset);
+    // 屏蔽2号信号
+    sigaddset(&myset, SIGINT);
+    sigaddset(&myset, SIGQUIT);
+    sigprocmask(SIG_BLOCK, &myset, &oldset);   
+    int ret = sigpending(&pending_set);
+    if (ret == -1)
+    {
+        perror("wrong\n");
+        exit(1);
+    }
+    while (1)
+    {
+        sigpending(&pending_set);
+        print_signal(&pending_set);
+        printf("\n");
+        sleep(1);
+    }
+    return 0;
+}
+```
+
+
 
 ## 信号捕捉
 
@@ -266,23 +327,129 @@ void (*signal(int sig, void (*func)(int)))(int);
 例子：
 
 ```c
+// signal函数示例
+void catch_signal(int sig_num)
+{
+    printf("catch you:%d!\n",sig_num);
+}
+int main(void)
+{
+    // signal函数用来注册信号捕捉
+    signal(SIGQUIT, catch_signal);
+    while (1);
+}
 ```
-
-
 
 简化版`sigaction()`
 
 ### sigaction()函数
 
+该函数的使用流程类似于signal，都是为信号注册捕捉函数：
+
+```c
+int sigaction(int signum, const struct sigaction *act, struct sigaction *oldact);
+```
+
+参数列表：
+
+- signum：为注册信号的名称
+- act：结构体，代表新的处理方式
+- oldact：结构体，代表旧的处理方式
+
+sigaction结构体主要内容：
+
+```c
+ struct  sigaction {
+             union __sigaction_u __sigaction_u;  /* signal handler */
+             sigset_t sa_mask;               /* signal mask to apply */
+             int     sa_flags;               /* see signal options below */
+     };
+     union __sigaction_u {
+             void    (*__sa_handler)(int);
+             void    (*__sa_sigaction)(int, siginfo_t *,
+                            void *);
+     };
+```
+
+结构体内容说明：
+
+1. sa_handler:指定信号捕捉后的处理函数名(即注册函数)。也可赋值为 SIG_IGN 表示忽略 或 SIG_DFL 表执行默认动作
+2. sa_mask: 调用信号处理函数时，所要屏蔽的信号集合(信号屏蔽字)。注意:仅在处理函数被调用期间屏蔽生效，是临时性设置。
+3.  sa_flags:通常设置为 0，表使用默认属性。
+4. sa_sigaction参数用的很少:当 sa_flags 被指定为 SA_SIGINFO 标志时，使用该信号处理程序。(很少使用)
+
 下面的小例子，使用 sigaction 捕捉两个信号:
 
+```C
+void catch_signal(int sig_num)
+{
+    if (sig_num == SIGQUIT)
+    {
+        printf("catch %d\n", sig_num);
+        sleep(5);
+    }
+    else if (sig_num == SIGINT)
+    {
+        printf("catch %d\n", sig_num);
+    }
+}
 
+int main(void)
+{
+    struct sigaction act, oact;
+    act.sa_handler = catch_signal;
+    // set mask when sig_catch working. 清空sa_mask屏蔽字, 只在 sig_catch 工作时有效
+    sigemptyset(&(act.sa_mask)); 
+    act.sa_flags = 0; // usually use. 默认值
+    int ret = sigaction(SIGINT, &act, &oact);
+    if (ret == -1)
+    {
+        perror("wrong\n");
+        exit(1);
+    }
+    ret = sigaction(SIGQUIT, &act, &oact);
+    if (ret == -1)
+    {
+        perror("wrong\n");
+        exit(1);
+    }
+    while (1);
+
+}
+```
 
 ## 信号捕捉特性
 
-1. 信号捕捉期间，由sa_mask说了算，结束之后恢复mask
-
-
+1. （和mask（信号屏蔽字）的区别）：进程正常运行时，默认 PCB 中有一个信号屏蔽字，假定为mask，它决定了进程自动屏蔽哪些信号。当注册了某个信号捕捉函数，捕捉到该信号以后，要调用该函数。而该函数有可能执行很长时间，在这期间所屏蔽的信号不由mask来指定。而是用 sa_mask 来指定。调用完信号处理函数，再恢复为mask。
+2. XXX 信号捕捉函数执行期间，XXX 信号自动被屏蔽。
+3. 阻塞的常规信号不支持排队，产生多次只记录一次。(后 32 个实时信号支持排队)
 
 ## 信号捕捉过程
 
+SIGCHILD信号：只要子进程状态发生变化，就会产生该信号，包括：
+
+- 子进程终止时
+- 子进程接收到 SIGSTOP 信号停止时 
+- 子进程处在停止态，接受到 SIGCONT 后唤醒时
+
+子进程结束运行，其父进程会收到 SIGCHLD 信号。该信号的默认处理动作是忽略。可以捕捉该信号，在捕捉函数中完成子进程状态的回收。
+
+示例代码：
+
+```c
+```
+
+加入一个while(1)循环，用ps ajx会出现僵尸进程，同时多次执行，会发现回收到的子进程数量不是固定的。 原因分析:问题出在，一次回调只回收一个子进程这里。同时出现多个子进程死亡时，其中一个子进程死亡 信号被捕捉，父进程去处理这个信号，此时其他子进程死亡信号发送过来，由于**相同信号的不排队原则**，就只会回收累积信号中的一个子进程。
+
+
+
+还有一个问题需要注意，这里有可能父进程还没注册完捕捉函数，子进程就死亡了，解决这个问 题的方法，首先是让子进程 sleep，但这个不太科学。在 fork 之前注册也行，但这个也不是很科学。 最科学的方法是在 int i 之前设置屏蔽，等父进程注册完捕捉函数再解除屏蔽。这样即使子进程先死 亡了，信号也因为被屏蔽而无法到达父进程。解除屏蔽过后，父进程就能处理累积起来的信号了。
+
+```c
+```
+
+## 中断系统调用
+
+慢速系统调用: 可能会使进程永久阻塞的一类。如果在阻塞期间收到一个信号，该系统调用就被中断，不再继续执行(早期)，也可以设定系统调用是否重启。如 read, write, pause...
+
+这里需要对sa_flags进行一定的设置，传入SA_RESTART
