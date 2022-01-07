@@ -410,7 +410,59 @@ int main(void)
 
 终止练习2:endof3
 
-该练习说明，如果已经被cancel杀死的进程
+```c
+// endof3.c
+// 测试线程保存点
+void * work(void * arg)
+{
+    while (1)
+    {
+        printf("I am child thread, and my tid is %lu\n", pthread_self());
+       sleep(1);
+    }
+}
+int main(void)
+{
+    pthread_t tid;
+    int ret;
+    void* nret = NULL;
+    ret = pthread_create(&tid, NULL, &work, NULL);
+    // 返回0表示成功
+    if (ret != 0)
+    {
+        fprintf(stdout, "create error:%s\n", strerror(ret));
+        exit(1);
+    }
+    printf("main: pid = %d, tid = %lu\n", getpid(), pthread_self());
+    sleep(5);
+    ret = pthread_cancel(tid);
+    if (ret != 0)
+    {
+        fprintf(stdout, "cancel error:%s\n", strerror(ret));
+        exit(1);
+    }
+    pthread_join(tid, &nret);
+    printf("Thread exit with exit code:%d\n", (int) nret);
+    while (1);
+    pthread_exit(NULL);
+}
+```
+
+该练习说明，如果已经被cancel杀死的进程，使用join是无法被回收到的。
+
+```C
+➜  chapter5-thread git:(master) ✗ ./thread_cancel2
+main: pid = 19527, tid = 140512329911168
+I am child thread, and my tid is 140512320292608
+I am child thread, and my tid is 140512320292608
+I am child thread, and my tid is 140512320292608
+I am child thread, and my tid is 140512320292608
+I am child thread, and my tid is 140512320292608
+Thread exit with exit code:-1
+^C
+```
+
+
 
 等待线程到达某个取消点(检查点)，可粗略认为一个系统调用(**进入内核**)即为一个取消点。如线程中没有取消点，可以通过调用 `pthread_testcancel()` 函数自行设置一个取消点。
 
@@ -431,7 +483,47 @@ int pthread_detach(pthread_t thread); 设置线程分离 thread: 待分离的线
 下面这个例子，使用 detach 分离线程，照理来说，分离后的线程会自动回收:
 
 ```c
+// 测试detach后是否会被自动回收
+void * work(void * arg)
+{
+    printf("thread: pid = %d, tid = %lu\n", getpid(), pthread_self());
+    return NULL;
+}
+int main(void)
+{
+    pthread_t tid;
+    int ret;
+    ret = pthread_create(&tid, NULL, &work, NULL);
+    // 返回0表示成功
+    if (ret != 0)
+    {
+        fprintf(stdout, "create error:%s\n", strerror(ret));
+        exit(1);
+    }
+    printf("main: pid = %d, tid = %lu\n", getpid(), pthread_self());
+    sleep(5);
+    ret = pthread_detach(tid);
+    if (ret != 0)
+    {
+        fprintf(stdout, "detach error:%s\n", strerror(ret));
+        exit(1);
+    }
+    ret = pthread_join(tid, NULL);
+    if (ret != 0)
+    {
+        fprintf(stdout, "join error:%s\n", strerror(ret));
+        exit(1);
+    }
+    pthread_exit(NULL);
+
+}
+➜  chapter5-thread git:(master) ✗ ./pthread_detach 
+main: pid = 22143, tid = 140454001974144
+thread: pid = 22143, tid = 140453992355584
+join error:Invalid argument
 ```
+
+从运行结果看，detach之后，join会出现join error，因为tid已经被分离了，是个invalid的内容。
 
 ### 线程进程控制原语对比
 
@@ -458,7 +550,7 @@ int pthread_detach(pthread_t thread); 设置线程分离 thread: 待分离的线
 
 ### 线程分离属性
 
-可以一开始创建线程时就为线程设置分离属性，此时需要一个结构体，先进行初始化
+可以一开始创建线程时就为线程设置分离属性，否则创建1000个线程就要为1000个线程分别进行detach，很麻烦，此时需要一个结构体，先进行初始化
 
 ```c
 pthread_attr_t
@@ -482,7 +574,48 @@ PTHREAD _CREATE_JOINABLE(非分离线程)
 课堂回收例子：
 
 ```c
+void * work(void * arg)
+{
+    printf("Work:thread: pid = %d, tid = %lu\n", getpid(), pthread_self());
+    return NULL;
+}
 
+int main(void)
+{
+    pthread_t tid;
+    int ret;
+    pthread_attr_t attr;
+    pthread_attr_init(&attr);
+    ret = pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
+    if (ret != 0)
+    {
+        fprintf(stdout, "set attr error:%s\n", strerror(ret));
+        exit(1);
+    }
+    ret = pthread_create(&tid, &attr, &work, NULL);
+    if (ret != 0)
+    {
+        fprintf(stdout, "create error:%s\n", strerror(ret));
+        exit(1);
+    }
+    printf("Main:thread: pid = %d, tid = %lu\n", getpid(), pthread_self());
+    sleep(1);
+    ret = pthread_join(tid, NULL);
+    if (ret != 0)
+    {
+        fprintf(stdout, "join error:%s\n", strerror(ret));
+        exit(1);
+    }
+
+    pthread_attr_destroy(&attr);
+
+    pthread_exit(NULL);
+}
+
+➜  chapter5-thread git:(master) ✗ ./set_detach_attr 
+Main:thread: pid = 10921, tid = 139861450812288
+Work:thread: pid = 10921, tid = 139861441193728
+join error:Invalid argument
 ```
 
 ### 线程使用注意事项
