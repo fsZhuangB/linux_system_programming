@@ -91,7 +91,7 @@ destory函数：
 pthead_mutex_destroy;销毁锁
 ```
 
-![Screen Shot 2022-01-08 at 17.04.23](/Users/fszhuangb/Library/Application Support/typora-user-images/Screen Shot 2022-01-08 at 17.04.23.png)
+![Screen Shot 2022-01-08 at 17.04.23](https://raw.githubusercontent.com/fsZhuangB/Photos_Of_Blog/master/photos/202201151510990.png)
 
 对上面的例子进行加锁：
 
@@ -353,18 +353,128 @@ pthread_cond_t类型 用于定义条件变量，pthread_cond_t cond;
 
 ### 条件变量和相关函数 wait
 
-阻塞等待条件:
+阻塞等待条件变量满足，并加锁互斥量:
  pthread_cond_wait(&cond, &mutex);
 
 结合pthread_cond_signal 函数和pthread_cond_broadcast 函数使用
 
-![Screen Shot 2022-01-10 at 20.35.26](/Users/fszhuangb/Library/Application Support/typora-user-images/Screen Shot 2022-01-10 at 20.35.26.png)
+![Screen Shot 2022-01-10 at 20.35.26](https://raw.githubusercontent.com/fsZhuangB/Photos_Of_Blog/master/photos/202201151511182.png)
 
 ## 生产者消费者模型
 
+![Screen Shot 2021-12-19 at 14.47.54](https://raw.githubusercontent.com/fsZhuangB/Photos_Of_Blog/master/photos/202201151601991.png)
 
 
-![Screen Shot 2022-01-10 at 20.43.23](/Users/fszhuangb/Library/Application Support/typora-user-images/Screen Shot 2022-01-10 at 20.43.23.png)
+
+![Screen Shot 2022-01-10 at 20.43.23](https://raw.githubusercontent.com/fsZhuangB/Photos_Of_Blog/master/photos/202201151511667.png)
 
 ### 条件变量生产者消费者代码
+
+```c
+// 实现生产者消费者模型
+struct msg
+{
+    int num;
+    struct msg *next;
+};
+struct msg *header;
+
+pthread_mutex_t mutex;
+pthread_cond_t hasData;
+
+void pthread_err(int ret, char *str)
+{
+    if (ret != 0)
+    {
+        fprintf(stdout, "%s:%s", str, strerror(ret));
+        pthread_exit(NULL);
+    }
+}
+
+void* consumer(void *arg)
+{
+    while (1)
+    {
+    struct msg *mp;
+
+    // 上来就要加锁
+    int ret = pthread_mutex_lock(&mutex);
+    pthread_err(ret, "wrong lock!\n");
+    if (header == NULL)
+    {
+        // 如果条件变量不满足，则阻塞在此处，并将mutex解锁
+        // 满足后，加锁mutex
+        pthread_cond_wait(&hasData, &mutex);
+    }
+    // 当阻塞结束，去读数据
+    mp = header;
+    header = mp->next;
+
+    pthread_mutex_unlock(&mutex);
+    printf("---------consumer:%d\n", mp->num);
+
+    free(mp);
+    sleep(rand() % 3);
+    }
+
+}
+
+void* producer(void *arg)
+{
+    while (1)
+    {
+    struct msg *mp = malloc(sizeof(struct msg));
+    // 模拟生产一个数据
+    mp->num = rand() % 1000 + 1;
+    printf("--produce %d\n", mp->num);
+
+    // 并挂上去
+    int ret = pthread_mutex_lock(&mutex);
+    mp->next = header;
+    header = mp;  // 写公共区域
+    pthread_mutex_unlock(&mutex);
+
+    // 通知条件变量
+    pthread_cond_signal(&hasData);
+    sleep(rand() % 3);
+    }
+}
+int main(void)
+{
+    int ret;
+    pthread_t cid, pid;
+    srand(time(NULL));
+    pthread_mutex_init(&mutex, NULL);
+    pthread_cond_init(&hasData, NULL);
+
+    ret = pthread_create(&cid, NULL, &consumer, NULL);
+    pthread_err(ret, "wrong create!\n");
+    ret = pthread_create(&pid, NULL, &producer, NULL);
+    pthread_err(ret, "wrong create!\n");
+    pthread_join(cid, NULL);
+    pthread_join(pid, NULL);
+
+    pthread_exit(NULL);
+}
+```
+
+### 多个消费者
+
+直接多创建几个消费者就可以，逻辑来分析一下：
+
+![Screen Shot 2022-01-15 at 16.13.42](https://raw.githubusercontent.com/fsZhuangB/Photos_Of_Blog/master/photos/202201151613167.png)
+
+比如，两个消费者都阻塞在条件变量上，就是说没有数据可以消费。于是都把锁还回去了，而生产者此时生产了一个数据，会同时唤醒两个因条件变量阻塞的消费者，两个消费者会同时去抢锁。此时假定就是 A 消费者拿到锁，开始消费数据，B 消费者阻塞在锁上。之后 A 消费完数据，把锁归还，B 被唤醒，**然而此时已经没有数据供 B 消费了。**所以这里有个逻辑错误，消费者阻塞在条件变量那里应该使用 while 循环。这样 A 消费完数据后，B 做的第一件事不是去拿锁，而是 判定是否有数据存在，否则
+
+```c
+// 此处应该改为while循环    
+	while (header == NULL)
+    {
+        // 如果条件变量不满足，则阻塞在此处，并将mutex解锁
+        // 满足后，加锁mutex
+        pthread_cond_wait(&hasData, &mutex);
+    }
+```
+
+
 
