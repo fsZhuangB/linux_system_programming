@@ -707,7 +707,7 @@ int main(int argc, char *argv[])
 例如：
 
 ```c
- char * stpcpy(char * dst, const char * src);
+ char * strcpy(char * dst, const char * src);
 ```
 
 第二个参数就是传入参数。
@@ -745,6 +745,12 @@ char *
 
 ## 文件存储
 
+大部分的Linux文件系统（如ext2、ext3）规定，一个文件由目录项、inode和数据块组成：
+
+-   目录项（dentry）：包括文件名和inode节点号。
+-   Inode：又称文件索引节点，包含文件的基础信息以及数据块的指针。
+-   数据块：包含文件的具体内容。
+
 文件有两部分储存，Inode和dentry
 
 硬链接的本质是为文件创建不同的dentry：
@@ -755,7 +761,7 @@ char *
 
 其本质为结构体，存储文件的属性信息。如:权限、类型、大小、时间、用户、**盘块位置**......也叫作文件属性管理结构，大多数的 inode 都存储在磁盘上。
 
-少量常用、近期使用的 inode 会被缓存到内存中。
+少量常用、近期使用的 inode 会被缓存到内存中。![Screen Shot 2022-02-11 at 19.56.52](https://raw.githubusercontent.com/fsZhuangB/Photos_Of_Blog/master/photos/202202111957910.png)
 
 ### dentry
 
@@ -1170,7 +1176,7 @@ MMU可以把内存空间不连续的映射为连续的
 
 子进程将父进程的代码复制一遍
 
-![Screen Shot 2021-12-22 at 13.21.53](/Users/fszhuangb/Library/Application Support/typora-user-images/Screen Shot 2021-12-22 at 13.21.53.png)
+![Screen Shot 2021-12-22 at 13.21.53](https://raw.githubusercontent.com/fsZhuangB/Photos_Of_Blog/master/photos/202202112001296.png)
 
 下面的代码会打印两遍：
 
